@@ -11,22 +11,25 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-const HEROKU_URL = `https://${process.env.HEROKU_APP_NAME || 'your-app-name'}.herokuapp.com`; // Heroku app name daal do
+const HEROKU_URL = `https://${process.env.HEROKU_APP_NAME || 'your-app-name'}.herokuapp.com`;
 
 if (!TELEGRAM_BOT_TOKEN) {
   console.error("❌ TELEGRAM_BOT_TOKEN missing in Config Vars");
 }
 
-// Telegram Bot - Webhook Mode (Heroku ke liye best)
+// Telegram Bot - Webhook Mode
 const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
-const webhookPath = `/bot${TELEGRAM_BOT_TOKEN}`;
-const webhookUrl = `\( {HEROKU_URL} \){webhookPath}`;
 
-bot.setWebHook(webhookUrl).then(() => {
-  console.log(`🤖 Webhook set successfully: ${webhookUrl}`);
-}).catch(err => {
-  console.error("Webhook set error:", err);
-});
+const webhookPath = `/bot${TELEGRAM_BOT_TOKEN}`;
+const webhookUrl = `${HEROKU_URL}${webhookPath}`; // ✅ FIX
+
+bot.setWebHook(webhookUrl)
+  .then(() => {
+    console.log(`🤖 Webhook set successfully: ${webhookUrl}`);
+  })
+  .catch(err => {
+    console.error("Webhook set error:", err);
+  });
 
 // Bot Commands
 bot.onText(/\/start/, (msg) => {
@@ -40,12 +43,16 @@ bot.onText(/\/generate (.+)/, async (msg, match) => {
   try {
     const payload = {
       batchId,
-      validTill: Date.now() + (240 * 60 * 1000), // 4 hours
+      validTill: Date.now() + (240 * 60 * 1000),
       timestamp: Date.now()
     };
 
-    const encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), ENCRYPTION_SECRET).toString();
-    const liveUrl = `\( {HEROKU_URL}/live?enc= \){encodeURIComponent(encrypted)}`;
+    const encrypted = CryptoJS.AES.encrypt(
+      JSON.stringify(payload),
+      ENCRYPTION_SECRET
+    ).toString();
+
+    const liveUrl = `${HEROKU_URL}/live?enc=${encodeURIComponent(encrypted)}`; // ✅ FIX
 
     const inlineKeyboard = {
       inline_keyboard: [[{ text: "▶️ Live Class Join Karo", url: liveUrl }]]
@@ -62,32 +69,13 @@ bot.onText(/\/generate (.+)/, async (msg, match) => {
   }
 });
 
-// Webhook route for Telegram
+// Webhook route
 app.post(webhookPath, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// ====================== Old Routes (JWT + Live Player) ======================
-const authenticateJWT = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: "Token required" });
-  }
-  const token = authHeader.split(' ')[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(403).json({ success: false, message: "Invalid token" });
-  }
-};
-
-app.post('/login', (req, res) => { /* purana login code same rakh sakte ho */ });
-
-app.post('/generate-link', authenticateJWT, (req, res) => { /* purana generate-link */ });
-
+// Routes
 app.get('/live', (req, res) => {
   const enc = req.query.enc;
   if (!enc) return res.status(400).send("<h2>❌ Invalid Link</h2>");
@@ -100,54 +88,17 @@ app.get('/live', (req, res) => {
       return res.send("<h2>❌ Link Expired</h2>");
     }
 
-    res.send(`<h1>🔴 Live Class - Batch ${data.batchId}</h1><p>Player yahan aayega (abhi basic)</p>`);
+    res.send(`<h1>🔴 Live Class - Batch ${data.batchId}</h1><p>Player yahan aayega</p>`);
   } catch (e) {
     res.send("<h2>❌ Invalid Link</h2>");
   }
 });
 
 app.get('/', (req, res) => {
-  res.json({ message: "Server + Telegram Bot (Webhook) Running" });
+  res.json({ message: "Server + Telegram Bot Running" });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🤖 Webhook active`);
-});  res.json({ message: "Server + Telegram Bot (Webhook) Running" });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🤖 Webhook active`);
-});        </div>
-        <script>
-          // Basic anti-download protection
-          document.addEventListener('contextmenu', e => e.preventDefault());
-        </script>
-      </body>
-      </html>
-    `);
-  } catch (e) {
-    res.status(403).send("<h2>❌ Invalid or Tampered Link</h2>");
-  }
-});
-
-// Root check
-app.get('/', (req, res) => {
-  res.json({
-    message: "PW Live Class Server is Running",
-    endpoints: {
-      login: "POST /login",
-      generate: "POST /generate-link (with JWT)",
-      live: "GET /live?enc=..."
-    }
-  });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`Test: http://localhost:${PORT}`);
 });
