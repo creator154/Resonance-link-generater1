@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Token Generator</title>
+</head>
+<body style="text-align:center; font-family:sans-serif;">
+
+  <h2>🎯 Generate Batch Token</h2>
+
+  <input type="text" id="batch" placeholder="Enter Batch ID">
+  <br><br>
+
+  <button onclick="generate()">Generate Token</button>
+
+  <p id="result"></p>
+
+  <script>
+    async function generate() {
+      const batchId = document.getElementById("batch").value;
+
+      const res = await fetch("/create-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId })
+      });
+
+      const data = await res.json();
+
+      document.getElementById("result").innerText =
+        "/generate " + data.token;
+    }
+  </script>
+
+</body>
+</html>
