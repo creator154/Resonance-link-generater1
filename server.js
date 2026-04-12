@@ -2,79 +2,92 @@ require('dotenv').config();
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const CryptoJS = require('crypto-js');
-const cors = require('cors');
+const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 app.use(express.json());
-app.use(cors());
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET || "your_fallback_strong_key_change_this_2026";
+const ENCRYPTION_SECRET = process.env.ENCRYPTION_SECRET;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
-// ====================== JWT Authentication Middleware ======================
+const HEROKU_URL = `https://${process.env.HEROKU_APP_NAME || 'your-app-name'}.herokuapp.com`; // Heroku app name daal do
+
+if (!TELEGRAM_BOT_TOKEN) {
+  console.error("❌ TELEGRAM_BOT_TOKEN missing in Config Vars");
+}
+
+// Telegram Bot - Webhook Mode (Heroku ke liye best)
+const bot = new TelegramBot(TELEGRAM_BOT_TOKEN);
+const webhookPath = `/bot${TELEGRAM_BOT_TOKEN}`;
+const webhookUrl = `\( {HEROKU_URL} \){webhookPath}`;
+
+bot.setWebHook(webhookUrl).then(() => {
+  console.log(`🤖 Webhook set successfully: ${webhookUrl}`);
+}).catch(err => {
+  console.error("Webhook set error:", err);
+});
+
+// Bot Commands
+bot.onText(/\/start/, (msg) => {
+  bot.sendMessage(msg.chat.id, "✅ Welcome!\nBatch ID se live link generate karne ke liye:\n/generate <batchId>");
+});
+
+bot.onText(/\/generate (.+)/, async (msg, match) => {
+  const batchId = match[1].trim();
+  const chatId = msg.chat.id;
+
+  try {
+    const payload = {
+      batchId,
+      validTill: Date.now() + (240 * 60 * 1000), // 4 hours
+      timestamp: Date.now()
+    };
+
+    const encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), ENCRYPTION_SECRET).toString();
+    const liveUrl = `\( {HEROKU_URL}/live?enc= \){encodeURIComponent(encrypted)}`;
+
+    const inlineKeyboard = {
+      inline_keyboard: [[{ text: "▶️ Live Class Join Karo", url: liveUrl }]]
+    };
+
+    await bot.sendMessage(chatId, `✅ Batch: ${batchId}\n🔴 Live Class Link Ready!`, {
+      reply_markup: inlineKeyboard
+    });
+
+    console.log(`✅ Link generated for batch: ${batchId}`);
+  } catch (err) {
+    console.error(err);
+    bot.sendMessage(chatId, "❌ Error: Link generate nahi ho saka");
+  }
+});
+
+// Webhook route for Telegram
+app.post(webhookPath, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// ====================== Old Routes (JWT + Live Player) ======================
 const authenticateJWT = (req, res, next) => {
   const authHeader = req.headers.authorization;
-
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ success: false, message: "Token missing or invalid" });
+    return res.status(401).json({ success: false, message: "Token required" });
   }
-
   const token = authHeader.split(' ')[1];
-
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(403).json({ success: false, message: "Invalid or expired token" });
+    return res.status(403).json({ success: false, message: "Invalid token" });
   }
 };
 
-// ====================== Login Route (Teacher/Admin) ======================
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
+app.post('/login', (req, res) => { /* purana login code same rakh sakte ho */ });
 
-  // Demo credentials (real mein database use karna)
-  if (username === "admin" && password === "yourstrongpassword123") {
-    const token = jwt.sign(
-      { userId: 1, role: "teacher", username },
-      JWT_SECRET,
-      { expiresIn: '2h' }
-    );
-    res.json({ success: true, token: `Bearer ${token}` });
-  } else {
-    res.status(401).json({ success: false, message: "Invalid username or password" });
-  }
-});
+app.post('/generate-link', authenticateJWT, (req, res) => { /* purana generate-link */ });
 
-// ====================== Generate Encrypted Live URL ======================
-app.post('/generate-link', authenticateJWT, (req, res) => {
-  const { batchId, validMinutes = 240 } = req.body; // Default 4 hours
-
-  if (!batchId) {
-    return res.status(400).json({ success: false, message: "Batch ID is required" });
-  }
-
-  const payload = {
-    batchId: batchId,
-    validTill: Date.now() + (validMinutes * 60 * 1000),
-    issuedBy: req.user.userId,
-    timestamp: Date.now()
-  };
-
-  const encrypted = CryptoJS.AES.encrypt(JSON.stringify(payload), ENCRYPTION_SECRET).toString();
-  const liveUrl = `https://\( {req.get('host')}/live?enc= \){encodeURIComponent(encrypted)}`;
-
-  res.json({
-    success: true,
-    batchId: batchId,
-    liveUrl: liveUrl,
-    expiresIn: `${validMinutes} minutes`,
-    message: "Encrypted link generated successfully"
-  });
-});
-
-// ====================== Live Class Player (Student opens this) ======================
 app.get('/live', (req, res) => {
   const enc = req.query.enc;
   if (!enc) return res.status(400).send("<h2>❌ Invalid Link</h2>");
@@ -84,29 +97,24 @@ app.get('/live', (req, res) => {
     const data = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 
     if (data.validTill < Date.now()) {
-      return res.send("<h2>❌ Link Expired. Naya link maango teacher se.</h2>");
+      return res.send("<h2>❌ Link Expired</h2>");
     }
 
-    // Secure Player (yahan baad mein real slides add kar sakte ho)
-    res.send(`
-      <!DOCTYPE html>
-      <html lang="hi">
-      <head>
-        <meta charset="UTF-8">
-        <title>Live Class - Batch ${data.batchId}</title>
-        <style>
-          body { margin:0; background:#0f0f0f; color:#fff; font-family:Arial, sans-serif; text-align:center; padding:40px; }
-          h1 { color:#00ff00; }
-          #player { margin:30px auto; max-width:1000px; background:#1a1a1a; padding:30px; border-radius:12px; min-height:400px; }
-        </style>
-      </head>
-      <body>
-        <h1>🔴 Live Class Running</h1>
-        <h2>Batch: ${data.batchId}</h2>
-        <div id="player">
-          <p>Slides yahan load honge (baad mein PPT/images add kar denge)</p>
-          <p>Secure mode on - Download blocked</p>
-        </div>
+    res.send(`<h1>🔴 Live Class - Batch ${data.batchId}</h1><p>Player yahan aayega (abhi basic)</p>`);
+  } catch (e) {
+    res.send("<h2>❌ Invalid Link</h2>");
+  }
+});
+
+app.get('/', (req, res) => {
+  res.json({ message: "Server + Telegram Bot (Webhook) Running" });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🤖 Webhook active`);
+});        </div>
         <script>
           // Basic anti-download protection
           document.addEventListener('contextmenu', e => e.preventDefault());
