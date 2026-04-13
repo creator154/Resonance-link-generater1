@@ -8,13 +8,12 @@ const app = express();
 const activeLinks = new Map();
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const HEROKU_URL = `https://${process.env.HEROKU_APP_NAME}.herokuapp.com`;
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
+const HEROKU_URL = process.env.HEROKU_URL; // ✅ FIXED
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// ===== TELEGRAM BOT =====
+// ===== BOT =====
 const bot = new TelegramBot(TOKEN);
 
-// Generate secure link
 bot.onText(/\/generate (.+)/, (msg, match) => {
   const batchId = match[1].trim();
 
@@ -38,7 +37,7 @@ bot.onText(/\/generate (.+)/, (msg, match) => {
   });
 });
 
-// ===== LIVE ROUTE =====
+// ===== LIVE =====
 app.get('/live', (req, res) => {
   const { token } = req.query;
 
@@ -70,7 +69,7 @@ app.get('/live', (req, res) => {
   `);
 });
 
-// ===== STREAM ROUTE =====
+// ===== STREAM =====
 app.get('/stream', async (req, res) => {
   const { token } = req.query;
 
@@ -80,7 +79,7 @@ app.get('/stream', async (req, res) => {
 
   try {
     const response = await axios({
-      url: "https://your-video.m3u8",
+      url: "https://your-video.m3u8", // 🔥 apna video link daal
       method: "GET",
       responseType: "stream"
     });
@@ -98,7 +97,7 @@ app.get('/', (req, res) => {
   res.send("✅ Server Running");
 });
 
-// ===== AUTO CLEANUP =====
+// ===== AUTO CLEAN =====
 setInterval(() => {
   const now = Date.now();
   for (let [token, data] of activeLinks) {
