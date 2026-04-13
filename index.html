@@ -1,35 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="hi">
 <head>
-  <title>Token Generator</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZX Render Link Generator - Apna Batch</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #121212; color: #fff; padding: 20px; text-align: center; }
+    h1 { color: #00ffcc; }
+    input, button { padding: 12px; margin: 10px; font-size: 16px; border-radius: 8px; }
+    input { width: 80%; max-width: 600px; background: #222; color: #fff; border: 1px solid #00ffcc; }
+    button { background: #00ffcc; color: #000; font-weight: bold; cursor: pointer; border: none; }
+    button:hover { background: #00ccaa; }
+    #result { margin-top: 20px; padding: 15px; background: #1e1e1e; border-radius: 8px; word-break: break-all; font-size: 15px; }
+    .copy-btn { background: #ffcc00; margin-left: 10px; }
+  </style>
 </head>
-<body style="text-align:center; font-family:sans-serif;">
+<body>
+  <h1>🔗 ZX Render Link Generator 👨‍💻</h1>
+  <p>Made for Apna Batch • Sirf Apna Content Use Karo</p>
 
-  <h2>🎯 Generate Batch Token</h2>
+  <input type="text" id="originalUrl" placeholder="Yahan original m3u8 URL paste karo (Eruda se nikala hua)">
+  <br>
+  <button onclick="generateLink()">Generate Clean Link</button>
 
-  <input type="text" id="batch" placeholder="Enter Batch ID">
-  <br><br>
-
-  <button onclick="generate()">Generate Token</button>
-
-  <p id="result"></p>
+  <div id="result"></div>
 
   <script>
-    async function generate() {
-      const batchId = document.getElementById("batch").value;
+    const SECRET_KEY = "YOUR_32_CHAR_SECRET_CHANGE_THIS_1234567890ABCDEF"; // ← Isse strong random string bana lo (32+ chars)
 
-      const res = await fetch("/create-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batchId })
-      });
-
-      const data = await res.json();
-
-      document.getElementById("result").innerText =
-        "/generate " + data.token;
+    function encrypt(data) {
+      const iv = crypto.getRandomValues(new Uint8Array(16));
+      const key = new TextEncoder().encode(SECRET_KEY);
+      // Simple AES encryption (real mein Web Crypto API use kar rahe hain)
+      // Note: Production mein better encryption ke liye library use karo, yeh demo hai
+      console.warn("Encryption simplified for demo");
+      return btoa(JSON.stringify(data)); // Demo ke liye base64 (real mein AES karo)
     }
-  </script>
 
+    async function generateLink() {
+      const urlInput = document.getElementById('originalUrl').value.trim();
+      const resultDiv = document.getElementById('result');
+
+      if (!urlInput || !urlInput.includes('.m3u8')) {
+        resultDiv.innerHTML = `<span style="color:red;">Valid .m3u8 URL daalo!</span>`;
+        return;
+      }
+
+      const payload = {
+        originalUrl: urlInput,
+        expires: Date.now() + 8 * 60 * 60 * 1000, // 8 hours
+        time: Date.now()
+      };
+
+      const enc = encodeURIComponent(encrypt(payload));
+      const cleanLink = `\( {window.location.origin}/pw/live?enc= \){enc}`;
+
+      resultDiv.innerHTML = `
+        <strong>✅ Generated Link:</strong><br>
+        <a href="\( {cleanLink}" target="_blank"> \){cleanLink}</a><br><br>
+        <button class="copy-btn" onclick="copyToClipboard('${cleanLink}')">Copy Link</button>
+        <p style="font-size:12px;color:#aaa;">Link 8 ghante tak valid rahega • VLC / mpv / Browser mein kholo</p>
+      `;
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert('Link copied! Telegram channel pe daal do.');
+      });
+    }
+
+    // Warning message
+    console.log("%c⚠️ Sirf apna khud ka content use karo. PW ke live/recorded lectures distribute karna ToS violation hai.", "color: orange; font-size: 14px;");
+  </script>
 </body>
 </html>
